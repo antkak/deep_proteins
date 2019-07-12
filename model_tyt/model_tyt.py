@@ -194,13 +194,12 @@ def run_test(_model, data1, data2, data3, csv_name, npy_name):
 """ Run below for a single run """
 def train(X_train, y_train, X_val=None, y_val=None):
     """
-    Main Training function with the following properties:
-        Optimizer - Nadam
-        Loss function - Categorical Crossentropy
-        Batch Size - 128 (any more will exceed Collab GPU RAM)
-        Epochs - 50
+    Define model and use this function for training
     """
-    model = CNN_BIGRU()
+    # model = CNN_BIGRU()
+    # Define model HERE
+    model = None
+    assert(model is not None)
     model.compile(
         optimizer="Nadam",
         loss = "categorical_crossentropy",
@@ -216,61 +215,61 @@ def train(X_train, y_train, X_val=None, y_val=None):
 
     return history, model
 
-""" Build model """
-def conv_block(x, activation=True, batch_norm=True, drop_out=True, res=True):
-    cnn = Conv1D(64, 11, padding="same")(x)
-    if activation: cnn = TimeDistributed(Activation("relu"))(cnn)
-    if batch_norm: cnn = TimeDistributed(BatchNormalization())(cnn)
-    if drop_out:   cnn = TimeDistributed(Dropout(0.5))(cnn)
-    if res:        cnn = Concatenate(axis=-1)([x, cnn])
+# """ Build model """
+# def conv_block(x, activation=True, batch_norm=True, drop_out=True, res=True):
+#     cnn = Conv1D(64, 11, padding="same")(x)
+#     if activation: cnn = TimeDistributed(Activation("relu"))(cnn)
+#     if batch_norm: cnn = TimeDistributed(BatchNormalization())(cnn)
+#     if drop_out:   cnn = TimeDistributed(Dropout(0.5))(cnn)
+#     if res:        cnn = Concatenate(axis=-1)([x, cnn])
     
-    return cnn
+#     return cnn
 
-def super_conv_block(x):
-    c3 = Conv1D(32, 1, padding="same")(x)
-    c3 = TimeDistributed(Activation("relu"))(c3)
-    c3 = TimeDistributed(BatchNormalization())(c3)
+# def super_conv_block(x):
+#     c3 = Conv1D(32, 1, padding="same")(x)
+#     c3 = TimeDistributed(Activation("relu"))(c3)
+#     c3 = TimeDistributed(BatchNormalization())(c3)
     
-    c7 = Conv1D(64, 3, padding="same")(x)
-    c7 = TimeDistributed(Activation("relu"))(c7)
-    c7 = TimeDistributed(BatchNormalization())(c7)
+#     c7 = Conv1D(64, 3, padding="same")(x)
+#     c7 = TimeDistributed(Activation("relu"))(c7)
+#     c7 = TimeDistributed(BatchNormalization())(c7)
     
-    c11 = Conv1D(128, 5, padding="same")(x)
-    c11 = TimeDistributed(Activation("relu"))(c11)
-    c11 = TimeDistributed(BatchNormalization())(c11)
+#     c11 = Conv1D(128, 5, padding="same")(x)
+#     c11 = TimeDistributed(Activation("relu"))(c11)
+#     c11 = TimeDistributed(BatchNormalization())(c11)
     
-    x = Concatenate(axis=-1)([x, c3, c7, c11])
-    x = TimeDistributed(Dropout(0.5))(x)
-    return x
+#     x = Concatenate(axis=-1)([x, c3, c7, c11])
+#     x = TimeDistributed(Dropout(0.5))(x)
+#     return x
 
-def CNN_BIGRU():
-    # Inp is one-hot encoded version of inp_alt
-    inp          = Input(shape=(maxlen_seq, n_words))
-    inp_alt      = Input(shape=(maxlen_seq,))
-    inp_profiles = Input(shape=(maxlen_seq, 22))
+# def CNN_BIGRU():
+#     # Inp is one-hot encoded version of inp_alt
+#     inp          = Input(shape=(maxlen_seq, n_words))
+#     inp_alt      = Input(shape=(maxlen_seq,))
+#     inp_profiles = Input(shape=(maxlen_seq, 22))
 
-    # Concatenate embedded and unembedded input
-    x_emb = Embedding(input_dim=n_words, output_dim=64, 
-                      input_length=maxlen_seq)(inp_alt)
-    x = Concatenate(axis=-1)([inp, x_emb, inp_profiles])
+#     # Concatenate embedded and unembedded input
+#     x_emb = Embedding(input_dim=n_words, output_dim=64, 
+#                       input_length=maxlen_seq)(inp_alt)
+#     x = Concatenate(axis=-1)([inp, x_emb, inp_profiles])
 
-    x = super_conv_block(x)
-    x = conv_block(x)
-    x = super_conv_block(x)
-    x = conv_block(x)
-    x = super_conv_block(x)
-    x = conv_block(x)
+#     x = super_conv_block(x)
+#     x = conv_block(x)
+#     x = super_conv_block(x)
+#     x = conv_block(x)
+#     x = super_conv_block(x)
+#     x = conv_block(x)
 
-    x = Bidirectional(CuDNNGRU(units = 256, return_sequences = True, recurrent_regularizer=l2(0.2)))(x)
-    x = TimeDistributed(Dropout(0.5))(x)
-    x = TimeDistributed(Dense(256, activation = "relu"))(x)
-    x = TimeDistributed(Dropout(0.5))(x)
+#     x = Bidirectional(CuDNNGRU(units = 256, return_sequences = True, recurrent_regularizer=l2(0.2)))(x)
+#     x = TimeDistributed(Dropout(0.5))(x)
+#     x = TimeDistributed(Dense(256, activation = "relu"))(x)
+#     x = TimeDistributed(Dropout(0.5))(x)
     
-    y = TimeDistributed(Dense(n_tags, activation = "softmax"))(x)
+#     y = TimeDistributed(Dense(n_tags, activation = "softmax"))(x)
     
-    model = Model([inp, inp_alt, inp_profiles], y)
+#     model = Model([inp, inp_alt, inp_profiles], y)
     
-    return model
+#     return model
 
 print(train_input_data.shape)
 print(train_input_data_alt.shape)
@@ -288,11 +287,11 @@ train_target_data = train_target_data[randomize]
 val_p = 0.2
 vn = int(val_p*train_target_data.shape[0])
 
-# To use 3.3 Bidirectional GRU with convolutional blocks from paper (using a validation set) use:
-X_train = [train_input_data[vn:,:,:], train_input_data_alt[vn:,:], train_profiles_np[vn:,:,:]]
-y_train = train_target_data[vn:,:,:]
-X_val = [train_input_data[:vn,:,:], train_input_data_alt[:vn,:], train_profiles_np[:vn,:,:]]
-y_val = train_target_data[:vn,:,:]
+# # To use 3.3 Bidirectional GRU with convolutional blocks from paper (using a validation set) use:
+# X_train = [train_input_data[vn:,:,:], train_input_data_alt[vn:,:], train_profiles_np[vn:,:,:]]
+# y_train = train_target_data[vn:,:,:]
+# X_val = [train_input_data[:vn,:,:], train_input_data_alt[:vn,:], train_profiles_np[:vn,:,:]]
+# y_val = train_target_data[:vn,:,:]
 
 # # To use 3.3 Bidirectional GRU with convolutional blocks from paper (without a validation set) use:
 # X_train = [train_input_data, train_input_data_alt, train_profiles_np]
@@ -300,21 +299,21 @@ y_val = train_target_data[:vn,:,:]
 # X_val = None
 # y_val = None
 
-# # To use any other model with a simple one hot residue encoding (using a validation set) use:
-# X_train = train_input_data[vn:,:,:]
-# y_train = train_target_data[vn:,:,:]
-# X_val = train_input_data[:vn,:,:]
-# y_val = train_target_data[:vn,:,:]
+# To use any other model with a simple one hot residue encoding (using a validation set) use:
+X_train = train_input_data[vn:,:,:]
+y_train = train_target_data[vn:,:,:]
+X_val = train_input_data[:vn,:,:]
+y_val = train_target_data[:vn,:,:]
 
 history, model = train(X_train, y_train, X_val=X_val, y_val=y_val)
 
 # Save the model as a JSON format
 model.save_weights("cb513_weights_1.h5")
-with open("model_1.json", "w") as json_file:
+with open("model_tyt.json", "w") as json_file:
     json_file.write(model.to_json())
 
 # Save training history for parsing
-with open("history_1.pkl", "wb") as hist_file:
+with open("history_tyt.pkl", "wb") as hist_file:
     pickle.dump(history.history, hist_file)
 
 # Predict on test dataset and save the output
