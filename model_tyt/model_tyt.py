@@ -17,12 +17,19 @@ from keras.utils import to_categorical
 from keras.models import Model, Input
 from keras.layers import Embedding, Dense, TimeDistributed, Concatenate, BatchNormalization
 from keras.layers import Bidirectional, Activation, Dropout, CuDNNGRU, Conv1D
+from keras import backend as K
 
 from sklearn.model_selection import train_test_split, KFold
 from keras.metrics import categorical_accuracy
 from keras import backend as K
 from keras.regularizers import l1, l2
 import tensorflow as tf
+
+
+
+
+
+
 
 ### Data Retrieval
 # cb6133         = np.load("../data/cb6133.npy")
@@ -198,7 +205,7 @@ def train(X_train, y_train, X_val=None, y_val=None):
     """
     # model = CNN_BIGRU()
     # Define model HERE
-    model = None
+    model = create_CNN()
     assert(model is not None)
     model.compile(
         optimizer="Nadam",
@@ -214,6 +221,57 @@ def train(X_train, y_train, X_val=None, y_val=None):
             batch_size = 128, epochs = 100)
 
     return history, model
+
+
+##Eddie
+#n_super blocks : Number of pairs of convolutional blocks
+def create_CNN(n_super_blocks=2):
+    def conv_block(inp,ind):
+        c1 = Conv1D(36,1,padding='same',activation='linear',name='c1_'+str(ind))(inp)
+        c3=Conv1D(64,3,padding='same',activation='linear',name='c3_'+str(ind))(inp)
+        c7=Conv1D(64,7,padding='same',activation='linear',name='c7_'+str(ind))(inp)
+        c9=Conv1D(64,9,padding='same',activation='linear',name='c9_'+str(ind))(inp)
+        conc = Concatenate(axis=-1,name='conc_'+str(ind))([c3,c7,c9])
+        bn = BatchNormalization(name='bn_'+str(ind))(conc)
+        drop = Dropout(0.4,name='drop_'+str(ind))(bn)
+        act = Activation('relu',name='relu_'+str(ind))(drop)
+        
+        cc9 = Conv1D(27,9,padding='same',activation='linear',name='cc9_'+str(ind))(act)
+        bn2 =  BatchNormalization(name='bn2_'+str(ind))(cc9)
+        drop2 = Dropout(0.4,name='drop2_'+str(ind))(bn2)
+        act2 = Activation('relu',name='relu2_'+str(ind))(drop2)
+        
+        concat2 = Concatenate(axis=-1,name='conc2_'+str(ind))([c1,act,act2])
+        return concat2
+
+    def dense_block(inp,ind):
+        d1 = TimeDistributed(Dense(455,activation='linear',name='d_'+str(ind)))(inp)
+        bn = BatchNormalization(name='bnd_'+str(ind))(d1)
+        drop = Dropout(0.2,name='d_dropout_'+str(ind))(bn)
+        act = Activation('relu',name='relu_d_'+str(ind))(drop)
+        return act
+
+    
+    c_ind=0
+    d_ind=0
+    inp = Input((700,22))
+    inpp = inp
+
+    for i in range(n_super_blocks):
+        c1 = conv_block(inpp,c_ind)
+        c2 = conv_block(c1,c_ind+1)
+        c_ind+=2
+        inpp = dense_block(c2,d_ind)
+        d_ind+=1
+
+    o = TimeDistributed(Dense(9,activation='softmax'))(inpp)
+    m = Model(inp,o)
+    m.summary()
+    return m
+
+
+
+
 
 # """ Build model """
 # def conv_block(x, activation=True, batch_norm=True, drop_out=True, res=True):
@@ -304,6 +362,11 @@ X_train = train_input_data[vn:,:,:]
 y_train = train_target_data[vn:,:,:]
 X_val = train_input_data[:vn,:,:]
 y_val = train_target_data[:vn,:,:]
+print('X_train shape: ' + str(X_train.shape))
+print('y_train shape: ' + str(y_train.shape))
+print('X_val shape: ' + str(X_val.shape))
+print('y_val shape: ' + str(y_val.shape))
+
 
 history, model = train(X_train, y_train, X_val=X_val, y_val=y_val)
 
