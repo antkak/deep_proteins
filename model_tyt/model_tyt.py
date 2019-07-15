@@ -23,12 +23,9 @@ from sklearn.model_selection import train_test_split, KFold
 from keras.metrics import categorical_accuracy
 from keras import backend as K
 from keras.regularizers import l1, l2
+# from keras.optimizers import Nadam
 import tensorflow as tf
-
-
-
-
-
+from matplotlib import pyplot
 
 
 ### Data Retrieval
@@ -197,15 +194,36 @@ def run_test(_model, data1, data2, data3, csv_name, npy_name):
 
     np.save(npy_name, y_test_pred)
 
+def run_test_single_input(_model, data1, csv_name, npy_name):
+    reverse_decoder_index = {value:key for key,value in tokenizer_decoder.word_index.items()}
+    reverse_encoder_index = {value:key for key,value in tokenizer_encoder.word_index.items()}
+    
+    # Get predictions using our model
+    y_test_pred = _model.predict(data1)
+
+    decoded_y_pred = []
+    for i in range(len(data1[:])):
+        res = decode_results(y_test_pred[i], reverse_decoder_index)
+        decoded_y_pred.append(res)
+
+    # Set Columns
+    out_df = pd.DataFrame()
+    out_df["id"] = test_df.id.values
+    out_df["expected"] = decoded_y_pred
+
+    # Save results
+    with open(csv_name, "w") as f:
+        out_df.to_csv(f, index=False)
+
+    np.save(npy_name, y_test_pred)
+
 
 """ Run below for a single run """
 def train(X_train, y_train, X_val=None, y_val=None):
     """
     Define model and use this function for training
     """
-    # model = CNN_BIGRU()
-    # Define model HERE
-    model = create_CNN()
+    model = create_CNN(n_super_blocks=2)
     assert(model is not None)
     model.compile(
         optimizer="Nadam",
@@ -222,6 +240,22 @@ def train(X_train, y_train, X_val=None, y_val=None):
 
     return history, model
 
+# plot diagnostic learning curves
+def summarize_diagnostics(history):
+    # plot loss
+    pyplot.subplot(211)
+    pyplot.title('Cross Entropy Loss')
+    pyplot.plot(history.history['loss'], color='blue', label='train')
+    pyplot.plot(history.history['val_loss'], color='orange', label='test')
+    # plot accuracy
+    pyplot.subplot(212)
+    pyplot.title('Classification Accuracy')
+    pyplot.plot(history.history['acc'], color='blue', label='train')
+    pyplot.plot(history.history['val_acc'], color='orange', label='test')
+    # save plot to file
+    filename = 'model_diagn'
+    pyplot.savefig(filename + '_plot.png')
+    pyplot.close()
 
 ##Eddie
 #n_super blocks : Number of pairs of convolutional blocks
@@ -268,66 +302,6 @@ def create_CNN(n_super_blocks=2):
     m = Model(inp,o)
     m.summary()
     return m
-
-
-
-
-
-# """ Build model """
-# def conv_block(x, activation=True, batch_norm=True, drop_out=True, res=True):
-#     cnn = Conv1D(64, 11, padding="same")(x)
-#     if activation: cnn = TimeDistributed(Activation("relu"))(cnn)
-#     if batch_norm: cnn = TimeDistributed(BatchNormalization())(cnn)
-#     if drop_out:   cnn = TimeDistributed(Dropout(0.5))(cnn)
-#     if res:        cnn = Concatenate(axis=-1)([x, cnn])
-    
-#     return cnn
-
-# def super_conv_block(x):
-#     c3 = Conv1D(32, 1, padding="same")(x)
-#     c3 = TimeDistributed(Activation("relu"))(c3)
-#     c3 = TimeDistributed(BatchNormalization())(c3)
-    
-#     c7 = Conv1D(64, 3, padding="same")(x)
-#     c7 = TimeDistributed(Activation("relu"))(c7)
-#     c7 = TimeDistributed(BatchNormalization())(c7)
-    
-#     c11 = Conv1D(128, 5, padding="same")(x)
-#     c11 = TimeDistributed(Activation("relu"))(c11)
-#     c11 = TimeDistributed(BatchNormalization())(c11)
-    
-#     x = Concatenate(axis=-1)([x, c3, c7, c11])
-#     x = TimeDistributed(Dropout(0.5))(x)
-#     return x
-
-# def CNN_BIGRU():
-#     # Inp is one-hot encoded version of inp_alt
-#     inp          = Input(shape=(maxlen_seq, n_words))
-#     inp_alt      = Input(shape=(maxlen_seq,))
-#     inp_profiles = Input(shape=(maxlen_seq, 22))
-
-#     # Concatenate embedded and unembedded input
-#     x_emb = Embedding(input_dim=n_words, output_dim=64, 
-#                       input_length=maxlen_seq)(inp_alt)
-#     x = Concatenate(axis=-1)([inp, x_emb, inp_profiles])
-
-#     x = super_conv_block(x)
-#     x = conv_block(x)
-#     x = super_conv_block(x)
-#     x = conv_block(x)
-#     x = super_conv_block(x)
-#     x = conv_block(x)
-
-#     x = Bidirectional(CuDNNGRU(units = 256, return_sequences = True, recurrent_regularizer=l2(0.2)))(x)
-#     x = TimeDistributed(Dropout(0.5))(x)
-#     x = TimeDistributed(Dense(256, activation = "relu"))(x)
-#     x = TimeDistributed(Dropout(0.5))(x)
-    
-#     y = TimeDistributed(Dense(n_tags, activation = "softmax"))(x)
-    
-#     model = Model([inp, inp_alt, inp_profiles], y)
-    
-#     return model
 
 print(train_input_data.shape)
 print(train_input_data_alt.shape)
@@ -379,10 +353,18 @@ with open("model_tyt.json", "w") as json_file:
 with open("history_tyt.pkl", "wb") as hist_file:
     pickle.dump(history.history, hist_file)
 
-# Predict on test dataset and save the output
-run_test(model,
+
+# Predict on test dataset and save the output (1 input model)
+run_test_single_input(model,
     test_input_data[:],
-    test_input_data_alt[:],
-    test_profiles_np[:],
     "cb513_test_1.csv", "cb513_test_prob_1.npy")
+
+# # Predict on test dataset and save the output (3 input model)
+# run_test(model,
+#     test_input_data[:],
+#     test_input_data_alt[:],
+#     test_profiles_np[:],
+#     "cb513_test_1.csv", "cb513_test_prob_1.npy")
 """ End single run """
+
+summarize_diagnostics(history)
