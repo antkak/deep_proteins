@@ -5,7 +5,7 @@ Cascaded Convolution Model
 - Jeffrey Wan (jw3468)
 
 """
-
+import os
 import pickle
 import numpy as np 
 import pandas as pd
@@ -16,17 +16,19 @@ from keras.preprocessing.text import Tokenizer
 from keras.utils import to_categorical
 from keras.models import Model, Input
 from keras.layers import Embedding, Dense, TimeDistributed, Concatenate, BatchNormalization
-from keras.layers import Bidirectional, Activation, Dropout, CuDNNGRU, Conv1D
+from keras.layers import Bidirectional, Activation, Dropout, CuDNNGRU, Conv1D, Lambda
 from keras import backend as K
+from keras.callbacks import LearningRateScheduler
 
 from sklearn.model_selection import train_test_split, KFold
 from keras.metrics import categorical_accuracy
 from keras import backend as K
 from keras.regularizers import l1, l2
-# from keras.optimizers import Nadam
+from keras.optimizers import RMSprop
 import tensorflow as tf
 from matplotlib import pyplot
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 ### Data Retrieval
 # cb6133         = np.load("../data/cb6133.npy")
@@ -194,12 +196,12 @@ def run_test(_model, data1, data2, data3, csv_name, npy_name):
 
     np.save(npy_name, y_test_pred)
 
-def run_test_single_input(_model, data1, csv_name, npy_name):
+def run_test_single_input(_model, data1, data2, csv_name, npy_name):
     reverse_decoder_index = {value:key for key,value in tokenizer_decoder.word_index.items()}
     reverse_encoder_index = {value:key for key,value in tokenizer_encoder.word_index.items()}
     
     # Get predictions using our model
-    y_test_pred = _model.predict(data1)
+    y_test_pred = _model.predict([data1,data2])
 
     decoded_y_pred = []
     for i in range(len(data1[:])):
@@ -223,20 +225,28 @@ def train(X_train, y_train, X_val=None, y_val=None):
     """
     Define model and use this function for training
     """
-    model = create_CNN(n_super_blocks=2)
+    model = create_CNN(n_super_blocks=8)
     assert(model is not None)
+    initial_lrate = 0.00033
     model.compile(
-        optimizer="Nadam",
+        optimizer=RMSprop(lr=initial_lrate),
         loss = "categorical_crossentropy",
         metrics = ["accuracy", accuracy])
-    
+
+    def one_step(epoch):
+        if epoch > 200:
+            return initial_lrate/10.0
+        else:
+            return initial_lrate
+
+    lrate = LearningRateScheduler(one_step)
     if X_val is not None and y_val is not None:
         history = model.fit( X_train, y_train,
-            batch_size = 128, epochs = 100,
-            validation_data = (X_val, y_val))
+            batch_size = 8, epochs = 50,
+            validation_data = (X_val, y_val), callbacks = [lrate])
     else:
         history = model.fit( X_train, y_train,
-            batch_size = 128, epochs = 100)
+            batch_size = 8, epochs = 50, callbacks = [lrate])
 
     return history, model
 
@@ -260,8 +270,9 @@ def summarize_diagnostics(history):
 ##Eddie
 #n_super blocks : Number of pairs of convolutional blocks
 def create_CNN(n_super_blocks=2):
+
     def conv_block(inp,ind):
-        c1 = Conv1D(36,1,padding='same',activation='linear',name='c1_'+str(ind))(inp)
+        c1 = Conv1D(96,1,padding='same',activation='linear',name='c1_'+str(ind))(inp)
         c3=Conv1D(64,3,padding='same',activation='linear',name='c3_'+str(ind))(inp)
         c7=Conv1D(64,7,padding='same',activation='linear',name='c7_'+str(ind))(inp)
         c9=Conv1D(64,9,padding='same',activation='linear',name='c9_'+str(ind))(inp)
@@ -278,28 +289,28 @@ def create_CNN(n_super_blocks=2):
         concat2 = Concatenate(axis=-1,name='conc2_'+str(ind))([c1,act,act2])
         return concat2
 
-    def dense_block(inp,ind):
-        d1 = TimeDistributed(Dense(455,activation='linear',name='d_'+str(ind)))(inp)
-        bn = BatchNormalization(name='bnd_'+str(ind))(d1)
-        drop = Dropout(0.2,name='d_dropout_'+str(ind))(bn)
-        act = Activation('relu',name='relu_d_'+str(ind))(drop)
-        return act
-
+    # def dense_block(inp,ind):
+    #     d1 = TimeDistributed(Dense(455,activation='linear',name='d_'+str(ind)))(inp)
+    #     bn = BatchNormalization(name='bnd_'+str(ind))(d1)
+    #     drop = Dropout(0.2,name='d_dropout_'+str(ind))(bn)
+    #     act = Activation('relu',name='relu_d_'+str(ind))(drop)
+    #     return act
     
-    c_ind=0
-    d_ind=0
-    inp = Input((700,22))
-    inpp = inp
+    inp          = Input(shape=(maxlen_seq, n_words))
+    inp_profiles = Input(shape=(maxlen_seq, 22))
+    x = Concatenate(axis=-1)([inp, inp_profiles])
 
     for i in range(n_super_blocks):
-        c1 = conv_block(inpp,c_ind)
-        c2 = conv_block(c1,c_ind+1)
-        c_ind+=2
-        inpp = dense_block(c2,d_ind)
-        d_ind+=1
+        x = conv_block(x,i)
 
-    o = TimeDistributed(Dense(9,activation='softmax'))(inpp)
-    m = Model(inp,o)
+    x = TimeDistributed(Dense(455,activation='linear'))(x)
+    x = TimeDistributed(BatchNormalization())(x)
+    x = TimeDistributed(Activation('relu'))(x)
+    x = TimeDistributed(Dropout(0.2))(x)
+
+    o = TimeDistributed(Dense(9,activation='softmax'))(x)
+    
+    m = Model([inp, inp_profiles],o)
     m.summary()
     return m
 
@@ -316,7 +327,7 @@ train_input_data_alt = train_input_data_alt[randomize]
 train_profiles_np =  train_profiles_np[randomize]
 train_target_data = train_target_data[randomize]
 
-val_p = 0.2
+val_p = 0.02
 vn = int(val_p*train_target_data.shape[0])
 
 # # To use 3.3 Bidirectional GRU with convolutional blocks from paper (using a validation set) use:
@@ -331,16 +342,31 @@ vn = int(val_p*train_target_data.shape[0])
 # X_val = None
 # y_val = None
 
-# To use any other model with a simple one hot residue encoding (using a validation set) use:
-X_train = train_input_data[vn:,:,:]
-y_train = train_target_data[vn:,:,:]
-X_val = train_input_data[:vn,:,:]
-y_val = train_target_data[:vn,:,:]
-print('X_train shape: ' + str(X_train.shape))
-print('y_train shape: ' + str(y_train.shape))
-print('X_val shape: ' + str(X_val.shape))
-print('y_val shape: ' + str(y_val.shape))
+# # To use any other model with a simple one hot residue encoding (using a validation set) use:
+# X_train = train_input_data[vn:,:,:]
+# y_train = train_target_data[vn:,:,:]
+# X_val = train_input_data[:vn,:,:]
+# y_val = train_target_data[:vn,:,:]
+# print('X_train shape: ' + str(X_train.shape))
+# print('y_train shape: ' + str(y_train.shape))
+# print('X_val shape: ' + str(X_val.shape))
+# print('y_val shape: ' + str(y_val.shape))
 
+# # To use any other model with a PSSM encoding (using a validation set) use:
+# X_train = train_profiles_np[vn:,:,:]
+# y_train = train_target_data[vn:,:,:]
+# X_val = train_profiles_np[:vn,:,:]
+# y_val = train_target_data[:vn,:,:]
+# print('X_train shape: ' + str(X_train.shape))
+# print('y_train shape: ' + str(y_train.shape))
+# print('X_val shape: ' + str(X_val.shape))
+# print('y_val shape: ' + str(y_val.shape))
+
+# To use 3.3 Bidirectional GRU with convolutional blocks from paper (using a validation set) use:
+X_train = [train_input_data[vn:,:,:], train_profiles_np[vn:,:,:]]
+y_train = train_target_data[vn:,:,:]
+X_val = [train_input_data[:vn,:,:], train_profiles_np[:vn,:,:]]
+y_val = train_target_data[:vn,:,:]
 
 history, model = train(X_train, y_train, X_val=X_val, y_val=y_val)
 
@@ -357,6 +383,7 @@ with open("history_tyt.pkl", "wb") as hist_file:
 # Predict on test dataset and save the output (1 input model)
 run_test_single_input(model,
     test_input_data[:],
+    test_profiles_np[:],
     "cb513_test_1.csv", "cb513_test_prob_1.npy")
 
 # # Predict on test dataset and save the output (3 input model)
