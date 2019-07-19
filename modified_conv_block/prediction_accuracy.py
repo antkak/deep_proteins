@@ -18,4 +18,11 @@ for gt,pred in zip(gt_all,predictions):
 	if len(gt) == len(pred):
 		acc = get_acc(gt,pred)
 		acc_list.append(acc)
+		print(gt)
+		print()
+		print(pred)
+		print()
+		print()
+	else:
+		print('one what')
 print ('mean accuracy is', np.mean(acc_list))

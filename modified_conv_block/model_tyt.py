@@ -196,12 +196,12 @@ def run_test(_model, data1, data2, data3, csv_name, npy_name):
 
     np.save(npy_name, y_test_pred)
 
-def run_test_single_input(_model, data1, csv_name, npy_name):
+def run_test_single_input(_model, data1, data2, csv_name, npy_name):
     reverse_decoder_index = {value:key for key,value in tokenizer_decoder.word_index.items()}
     reverse_encoder_index = {value:key for key,value in tokenizer_encoder.word_index.items()}
     
     # Get predictions using our model
-    y_test_pred = _model.predict(data1)
+    y_test_pred = _model.predict([data1,data2])
 
     decoded_y_pred = []
     for i in range(len(data1[:])):
@@ -225,7 +225,7 @@ def train(X_train, y_train, X_val=None, y_val=None):
     """
     Define model and use this function for training
     """
-    model = create_CNN(n_super_blocks=4)
+    model = create_CNN(n_super_blocks=8)
     assert(model is not None)
     initial_lrate = 0.00033
     model.compile(
@@ -234,7 +234,7 @@ def train(X_train, y_train, X_val=None, y_val=None):
         metrics = ["accuracy", accuracy])
 
     def one_step(epoch):
-        if epoch > 100:
+        if epoch > 200:
             return initial_lrate/10.0
         else:
             return initial_lrate
@@ -242,11 +242,11 @@ def train(X_train, y_train, X_val=None, y_val=None):
     lrate = LearningRateScheduler(one_step)
     if X_val is not None and y_val is not None:
         history = model.fit( X_train, y_train,
-            batch_size = 8, epochs = 150,
+            batch_size = 8, epochs = 50,
             validation_data = (X_val, y_val), callbacks = [lrate])
     else:
         history = model.fit( X_train, y_train,
-            batch_size = 8, epochs = 150, callbacks = [lrate])
+            batch_size = 8, epochs = 50, callbacks = [lrate])
 
     return history, model
 
@@ -273,6 +273,29 @@ def create_CNN(n_super_blocks=2):
 
     def modified_conv_block(inp,ind):
 
+        # c1 = Conv1D(96,1,padding='same',activation='linear',name='c1_'+str(ind))(inp)
+        
+        # c3 = Conv1D(96,3,padding='same',activation='linear',name='c3_'+str(ind))(inp)
+        # bn = BatchNormalization(name='bn_'+str(ind))(c3)
+        # act = Activation('relu',name='relu_'+str(ind))(bn)
+        # drop1 = Dropout(0.4,name='drop_'+str(ind))(act)
+
+        # concat1 = Concatenate(axis=-1,name='conc1_'+str(ind))([inp,drop1])
+        
+        # c7=Conv1D(96,7,dilation_rate=2**(ind+1),padding='same',activation='linear',name='c7_'+str(ind))(concat1)
+        # bn2 = BatchNormalization(name='bn2_'+str(ind))(c7)
+        # act2 = Activation('relu',name='relu2_'+str(ind))(bn2)
+        # drop2 = Dropout(0.4,name='drop2_'+str(ind))(act2)
+
+        # concat2 = Concatenate(axis=-1,name='conc2_'+str(ind))([drop1,drop2])
+
+        # c9=Conv1D(27,9,dilation_rate=2**(ind+1),padding='same',activation='linear',name='c9_'+str(ind))(concat2)
+        # bn3 = BatchNormalization(name='bn3_'+str(ind))(c9)
+        # act3 = Activation('relu',name='relu3_'+str(ind))(bn3)
+        # drop3 = Dropout(0.4,name='drop3_'+str(ind))(act3)
+
+        # conc = Concatenate(axis=-1,name='conc_'+str(ind))([c1,drop3,concat2])
+
         c1 = Conv1D(96,1,padding='same',activation='linear',name='c1_'+str(ind))(inp)
         
         c3 = Conv1D(96,3,padding='same',activation='linear',name='c3_'+str(ind))(inp)
@@ -298,11 +321,12 @@ def create_CNN(n_super_blocks=2):
         
         return conc
     
-    inp = Input((700,22))
-    x = Lambda(lambda xi: xi)(inp)
+    inp          = Input(shape=(maxlen_seq, n_words))
+    inp_profiles = Input(shape=(maxlen_seq, 22))
+    x = Concatenate(axis=-1)([inp, inp_profiles])
 
     for i in range(n_super_blocks):
-        x = modified_conv_block(x,i)
+        x = modified_conv_block(x,2*i)
 
     x = TimeDistributed(Dense(455,activation='linear'))(x)
     x = TimeDistributed(BatchNormalization())(x)
@@ -311,7 +335,7 @@ def create_CNN(n_super_blocks=2):
 
     o = TimeDistributed(Dense(9,activation='softmax'))(x)
     
-    m = Model(inp,o)
+    m = Model([inp, inp_profiles],o)
     m.summary()
     return m
 
@@ -343,16 +367,31 @@ vn = int(val_p*train_target_data.shape[0])
 # X_val = None
 # y_val = None
 
-# To use any other model with a simple one hot residue encoding (using a validation set) use:
-X_train = train_input_data[vn:,:,:]
-y_train = train_target_data[vn:,:,:]
-X_val = train_input_data[:vn,:,:]
-y_val = train_target_data[:vn,:,:]
-print('X_train shape: ' + str(X_train.shape))
-print('y_train shape: ' + str(y_train.shape))
-print('X_val shape: ' + str(X_val.shape))
-print('y_val shape: ' + str(y_val.shape))
+# # To use any other model with a simple one hot residue encoding (using a validation set) use:
+# X_train = train_input_data[vn:,:,:]
+# y_train = train_target_data[vn:,:,:]
+# X_val = train_input_data[:vn,:,:]
+# y_val = train_target_data[:vn,:,:]
+# print('X_train shape: ' + str(X_train.shape))
+# print('y_train shape: ' + str(y_train.shape))
+# print('X_val shape: ' + str(X_val.shape))
+# print('y_val shape: ' + str(y_val.shape))
 
+# # To use any other model with a PSSM encoding (using a validation set) use:
+# X_train = train_profiles_np[vn:,:,:]
+# y_train = train_target_data[vn:,:,:]
+# X_val = train_profiles_np[:vn,:,:]
+# y_val = train_target_data[:vn,:,:]
+# print('X_train shape: ' + str(X_train.shape))
+# print('y_train shape: ' + str(y_train.shape))
+# print('X_val shape: ' + str(X_val.shape))
+# print('y_val shape: ' + str(y_val.shape))
+
+# To use 3.3 Bidirectional GRU with convolutional blocks from paper (using a validation set) use:
+X_train = [train_input_data[vn:,:,:], train_profiles_np[vn:,:,:]]
+y_train = train_target_data[vn:,:,:]
+X_val = [train_input_data[:vn,:,:], train_profiles_np[:vn,:,:]]
+y_val = train_target_data[:vn,:,:]
 
 history, model = train(X_train, y_train, X_val=X_val, y_val=y_val)
 
@@ -369,6 +408,7 @@ with open("history_tyt.pkl", "wb") as hist_file:
 # Predict on test dataset and save the output (1 input model)
 run_test_single_input(model,
     test_input_data[:],
+    test_profiles_np[:],
     "cb513_test_1.csv", "cb513_test_prob_1.npy")
 
 # # Predict on test dataset and save the output (3 input model)
