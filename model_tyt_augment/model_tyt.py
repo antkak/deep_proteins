@@ -245,36 +245,59 @@ def run_test_single_input(_model, data1, data2, csv_name, npy_name):
 
     np.save(npy_name, y_test_pred)
 
+    # load ground truth
+    gt_all = [line.strip().split(',')[3] for line in open('cb513test_solution.csv').readlines()]
+    predictions = decoded_y_pred
+    acc_list = []
+    
+    # calculating accuracy 
+    def get_acc(gt,pred):
+        assert len(gt)== len(pred)
+        correct = 0
+        for i in range(len(gt)):
+            if gt[i]==pred[i]:
+                correct+=1
+                
+        return (1.0*correct)/len(gt)
 
-""" Run below for a single run """
-def train(X_train, y_train, X_val=None, y_val=None):
-    """
-    Define model and use this function for training
-    """
-    model = create_CNN(n_super_blocks=8)
-    assert(model is not None)
-    initial_lrate = 0.00033
-    model.compile(
-        optimizer=RMSprop(lr=initial_lrate),
-        loss = "categorical_crossentropy",
-        metrics = ["accuracy", accuracy])
+    # compute accuracy
+    for gt,pred in zip(gt_all,predictions):
+        if len(gt) == len(pred):
+            acc = get_acc(gt,pred)
+            acc_list.append(acc)
 
-    def one_step(epoch):
-        if epoch > 200:
-            return initial_lrate/10.0
-        else:
-            return initial_lrate
+    print ('mean accuracy is', np.mean(acc_list))
 
-    lrate = LearningRateScheduler(one_step)
-    if X_val is not None and y_val is not None:
-        history = model.fit( X_train, y_train,
-            batch_size = 8, epochs = 50,
-            validation_data = (X_val, y_val), callbacks = [lrate])
-    else:
-        history = model.fit( X_train, y_train,
-            batch_size = 8, epochs = 50, callbacks = [lrate])
 
-    return history, model
+# """ Run below for a single run """
+# def train(X_train, y_train, X_val=None, y_val=None):
+#     """
+#     Define model and use this function for training
+#     """
+#     model = create_CNN(n_super_blocks=8)
+#     assert(model is not None)
+#     initial_lrate = 0.00033
+#     model.compile(
+#         optimizer=RMSprop(lr=initial_lrate),
+#         loss = "categorical_crossentropy",
+#         metrics = ["accuracy", accuracy])
+
+#     def one_step(epoch):
+#         if epoch > 200:
+#             return initial_lrate/10.0
+#         else:
+#             return initial_lrate
+
+#     lrate = LearningRateScheduler(one_step)
+#     if X_val is not None and y_val is not None:
+#         history = model.fit( X_train, y_train,
+#             batch_size = 8, epochs = 1,
+#             validation_data = (X_val, y_val), callbacks = [lrate])
+#     else:
+#         history = model.fit( X_train, y_train,
+#             batch_size = 8, epochs = 1, callbacks = [lrate])
+
+#     return history, model
 
 def train_gen(X_train, y_train, X_val=None, y_val=None):
     """
@@ -300,11 +323,11 @@ def train_gen(X_train, y_train, X_val=None, y_val=None):
 
     if X_val is not None and y_val is not None:
         generator = DataGen(X_train,y_train, 8, augmentations=True)
-        history = model.fit_generator(generator,epochs = 50,\
+        history = model.fit_generator(generator,epochs = 1,\
             validation_data = (X_val, y_val), callbacks = [lrate])
     else:
         generator = DataGen(X_train,y_train, 8, augmentations=True)
-        history = model.fit_generator(generator,epochs = 50,\
+        history = model.fit_generator(generator,epochs = 1,\
             callbacks = [lrate])
     return history, model
 

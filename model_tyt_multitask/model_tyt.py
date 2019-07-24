@@ -227,6 +227,29 @@ def run_test_single_input(_model, data1, data2, csv_name, npy_name):
 
     np.save(npy_name, y_test_pred)
 
+    # load ground truth
+    gt_all = [line.strip().split(',')[3] for line in open('cb513test_solution.csv').readlines()]
+    predictions = decoded_y_pred
+    acc_list = []
+    
+    # calculating accuracy 
+    def get_acc(gt,pred):
+        assert len(gt)== len(pred)
+        correct = 0
+        for i in range(len(gt)):
+            if gt[i]==pred[i]:
+                correct+=1
+                
+        return (1.0*correct)/len(gt)
+
+    # compute accuracy
+    for gt,pred in zip(gt_all,predictions):
+        if len(gt) == len(pred):
+            acc = get_acc(gt,pred)
+            acc_list.append(acc)
+
+    print ('mean accuracy is', np.mean(acc_list))
+
 
 """ Run below for a single run """
 def train(X_train, y_train, X_val=None, y_val=None):
@@ -250,11 +273,11 @@ def train(X_train, y_train, X_val=None, y_val=None):
     lrate = LearningRateScheduler(one_step)
     if X_val is not None and y_val is not None:
         history = model.fit( X_train, y_train,
-            batch_size = 8, epochs = 50,
+            batch_size = 8, epochs = 1,
             validation_data = (X_val, y_val), callbacks = [lrate])
     else:
         history = model.fit( X_train, y_train,
-            batch_size = 8, epochs = 50, callbacks = [lrate])
+            batch_size = 8, epochs = 1, callbacks = [lrate])
 
     return history, model
 
@@ -264,12 +287,12 @@ def summarize_diagnostics(history):
     pyplot.subplot(211)
     pyplot.title('Cross Entropy Loss')
     pyplot.plot(history.history['loss'], color='blue', label='train')
-    pyplot.plot(history.history['val_loss'], color='orange', label='test')
+    pyplot.plot(history.history['val_str_loss'], color='orange', label='test')
     # plot accuracy
     pyplot.subplot(212)
     pyplot.title('Classification Accuracy')
     pyplot.plot(history.history['acc'], color='blue', label='train')
-    pyplot.plot(history.history['val_acc'], color='orange', label='test')
+    pyplot.plot(history.history['val_str_acc'], color='orange', label='test')
     # save plot to file
     filename = 'model_diagn'
     pyplot.savefig(filename + '_plot.png')
@@ -317,7 +340,7 @@ def create_CNN(n_super_blocks=2):
     x = TimeDistributed(Dropout(0.2))(x)
 
     o1 = TimeDistributed(Dense(9,activation='softmax'),name = 'str')(x)
-    o2 = TimeDistributed(Dense(4,activation='softmax'),name = 'slv')(x)
+    o2 = TimeDistributed(Dense(6,activation='softmax'),name = 'slv')(x)
     
     m = Model([inp, inp_profiles],[o1,o2])
     m.summary()
@@ -328,8 +351,13 @@ abs_solv = []
 rel_solv = []
 for i in range(cb6133filtered.shape[0]):
     sequence = cb6133filtered[i,:].reshape((700,57))
-    abs_solv.append(list(sequence[:, 33]))
-    rel_solv.append(list(sequence[:, 34]))
+    abss = list(sequence[:, 33])
+    rels = list(sequence[:, 34])
+    nosec = list(sequence[:, 21])
+    abss = [x if int(y)!=1 else 2.0 for x,y in zip(abss,nosec) ]
+    rels = [x if int(y)!=1 else 2.0 for x,y in zip(rels,nosec) ]
+    abs_solv.append(abss)
+    rel_solv.append(rels)
 
 abs_solv_out = to_categorical(np.array(abs_solv))
 rel_solv_out = to_categorical(np.array(rel_solv))
@@ -340,6 +368,13 @@ print(train_input_data_alt.shape)
 print(train_profiles_np.shape)
 print(train_target_data.shape)
 print(y_train_solv.shape)
+
+# print(np.sum(train_input_data[0,:,:],axis = 0))
+# print(np.sum(train_profiles_np[0,:,:],axis = 0))
+# print(np.sum(train_target_data[0,:,:],axis = 0))
+# print(np.sum(y_train_solv[0,:,:],axis = 0))
+
+# assert(False)
 
 randomize = np.arange(len(train_target_data))
 np.random.shuffle(randomize)

@@ -218,6 +218,29 @@ def run_test_single_input(_model, data1, csv_name, npy_name):
 
     np.save(npy_name, y_test_pred)
 
+    # load ground truth
+    gt_all = [line.strip().split(',')[3] for line in open('cb513test_solution.csv').readlines()]
+    predictions = decoded_y_pred
+    acc_list = []
+    
+    # calculating accuracy 
+    def get_acc(gt,pred):
+        assert len(gt)== len(pred)
+        correct = 0
+        for i in range(len(gt)):
+            if gt[i]==pred[i]:
+                correct+=1
+                
+        return (1.0*correct)/len(gt)
+
+    # compute accuracy
+    for gt,pred in zip(gt_all,predictions):
+        if len(gt) == len(pred):
+            acc = get_acc(gt,pred)
+            acc_list.append(acc)
+
+    print ('mean accuracy is', np.mean(acc_list))
+
 
 """ Run below for a single run """
 def train(X_train, y_train, X_val=None, y_val=None):

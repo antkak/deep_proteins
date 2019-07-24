@@ -5,7 +5,7 @@ Cascaded Convolution Model
 - Jeffrey Wan (jw3468)
 
 """
-
+import os
 import pickle
 import numpy as np 
 import pandas as pd
@@ -23,6 +23,9 @@ from keras.metrics import categorical_accuracy
 from keras import backend as K
 from keras.regularizers import l1, l2
 import tensorflow as tf
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
 
 ### Data Retrieval
 # cb6133         = np.load("../data/cb6133.npy")
@@ -190,6 +193,30 @@ def run_test(_model, data1, data2, data3, csv_name, npy_name):
 
     np.save(npy_name, y_test_pred)
 
+    # load ground truth
+    gt_all = [line.strip().split(',')[3] for line in open('cb513test_solution.csv').readlines()]
+    predictions = decoded_y_pred
+    acc_list = []
+    
+    # calculating accuracy 
+    def get_acc(gt,pred):
+        assert len(gt)== len(pred)
+        correct = 0
+        for i in range(len(gt)):
+            if gt[i]==pred[i]:
+                correct+=1
+                
+        return (1.0*correct)/len(gt)
+
+    # compute accuracy
+    for gt,pred in zip(gt_all,predictions):
+        if len(gt) == len(pred):
+            acc = get_acc(gt,pred)
+            acc_list.append(acc)
+
+    print ('mean accuracy is', np.mean(acc_list))
+
+
 
 """ Run below for a single run """
 def train(X_train, y_train, X_val=None, y_val=None):
@@ -208,11 +235,11 @@ def train(X_train, y_train, X_val=None, y_val=None):
     
     if X_val is not None and y_val is not None:
         history = model.fit( X_train, y_train,
-            batch_size = 128, epochs = 100,
+            batch_size = 128, epochs = 1,
             validation_data = (X_val, y_val))
     else:
         history = model.fit( X_train, y_train,
-            batch_size = 128, epochs = 100)
+            batch_size = 128, epochs = 1)
 
     return history, model
 
@@ -287,24 +314,13 @@ train_target_data = train_target_data[randomize]
 
 val_p = 0.2
 vn = int(val_p*train_target_data.shape[0])
-
-# To use 3.3 Bidirectional GRU with convolutional blocks from paper (using a validation set) use:
 X_train = [train_input_data[vn:,:,:], train_input_data_alt[vn:,:], train_profiles_np[vn:,:,:]]
 y_train = train_target_data[vn:,:,:]
 X_val = [train_input_data[:vn,:,:], train_input_data_alt[:vn,:], train_profiles_np[:vn,:,:]]
 y_val = train_target_data[:vn,:,:]
 
-# # To use 3.3 Bidirectional GRU with convolutional blocks from paper (without a validation set) use:
-# X_train = [train_input_data, train_input_data_alt, train_profiles_np]
-# y_train = train_target_data
-# X_val = None
-# y_val = None
 
-# # To use any other model with a simple one hot residue encoding (using a validation set) use:
-# X_train = train_input_data[vn:,:,:]
-# y_train = train_target_data[vn:,:,:]
-# X_val = train_input_data[:vn,:,:]
-# y_val = train_target_data[:vn,:,:]
+
 
 history, model = train(X_train, y_train, X_val=X_val, y_val=y_val)
 
