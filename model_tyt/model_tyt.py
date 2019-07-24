@@ -17,6 +17,7 @@ from keras.utils import to_categorical
 from keras.models import Model, Input
 from keras.layers import Embedding, Dense, TimeDistributed, Concatenate, BatchNormalization
 from keras.layers import Bidirectional, Activation, Dropout, CuDNNGRU, Conv1D, Lambda
+from keras.layers import Multiply, Add
 from keras import backend as K
 from keras.callbacks import LearningRateScheduler
 
@@ -248,7 +249,8 @@ def train(X_train, y_train, X_val=None, y_val=None):
     """
     Define model and use this function for training
     """
-    model = create_CNN(n_super_blocks=8)
+    #model = create_CNN(n_super_blocks=8)
+    model = wavenet_proteins()
     assert(model is not None)
     initial_lrate = 0.00033
     model.compile(
@@ -265,11 +267,11 @@ def train(X_train, y_train, X_val=None, y_val=None):
     lrate = LearningRateScheduler(one_step)
     if X_val is not None and y_val is not None:
         history = model.fit( X_train, y_train,
-            batch_size = 8, epochs = 1,
+            batch_size = 4, epochs = 1,
             validation_data = (X_val, y_val), callbacks = [lrate])
     else:
         history = model.fit( X_train, y_train,
-            batch_size = 8, epochs = 1, callbacks = [lrate])
+            batch_size = 4, epochs = 1, callbacks = [lrate])
 
     return history, model
 
@@ -337,6 +339,38 @@ def create_CNN(n_super_blocks=2):
     m.summary()
     return m
 
+def wavenet_proteins():
+    def wavenet_block(n_filters, filter_size, dilation_rate):
+        def f(input_):
+            residual = input_
+            tanh_out = Conv1D(n_filters,filter_size,dilation_rate=dilation_rate, activation='tanh', padding='causal')(input_)
+            sig_out = Conv1D(n_filters,filter_size,dilation_rate=dilation_rate, activation='sigmoid', padding='causal')(input_)
+            #merged = Conv1D(n_filters,filter_size,dilation_rate=dilation_rate,activation='custom_activation',padding='same')(input_)
+            merged = Multiply()([tanh_out,sig_out])
+            skip_out = Conv1D(1,1,activation='relu',padding='same')(merged)
+            _out = Add()([skip_out,residual])
+            return _out,skip_out
+        return f
+
+
+    inp  = Input(shape=(maxlen_seq, n_words))
+    inp_profiles = Input((maxlen_seq,22))
+    inp_c = Concatenate(axis=-1)([inp,inp_profiles])
+    a,b = wavenet_block(256,3,1)(inp)
+    skip_connections=[b]
+    for i in range(9):
+        a,b = wavenet_block(612,3,2**((i+1)%9))(a)
+        skip_connections.append(b)
+    n= Add()(skip_connections)
+    n = Activation('relu')(n)
+    n = Conv1D(128,1,activation='relu',padding='same')(n)
+    
+    o = TimeDistributed(Dense(9,activation='softmax'))(n)
+    m = Model([inp,inp_profiles],o)
+    m.summary()
+    return m
+
+
 print(train_input_data.shape)
 print(train_input_data_alt.shape)
 print(train_profiles_np.shape)
@@ -394,12 +428,12 @@ y_val = train_target_data[:vn,:,:]
 history, model = train(X_train, y_train, X_val=X_val, y_val=y_val)
 
 # Save the model as a JSON format
-model.save_weights("cb513_weights_1.h5")
-with open("model_tyt.json", "w") as json_file:
+model.save_weights("cb513_wavweights_1.h5")
+with open("model_wav.json", "w") as json_file:
     json_file.write(model.to_json())
 
 # Save training history for parsing
-with open("history_tyt.pkl", "wb") as hist_file:
+with open("history_wav.pkl", "wb") as hist_file:
     pickle.dump(history.history, hist_file)
 
 
